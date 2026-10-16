@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dictation Prototype</title>
+<style>
+/* Layout: one working column. The talk control comes first, the text it fills sits right below,
+   and the measurements and settings that support testing come after. */
+:root {
+  --bg: #f3f5f7;
+  --surface: #ffffff;
+  --ink: #151a21;
+  --muted: #59636f;
+  --line: #d8dee5;
+  --accent: #0b6b63;
+  --accent-ink: #ffffff;
+  --rec: #c9261b;
+  --rec-ink: #ffffff;
+  --ok: #17794a;
+  --warn: #9a5a00;
+  --err: #b42318;
+  --err-bg: #fdeceb;
+  --info-bg: #e8f1fb;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Sans Devanagari", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1418;
+    --surface: #161d23;
+    --ink: #e7ecf1;
+    --muted: #92a0ad;
+    --line: #27323b;
+    --accent: #3dc5b5;
+    --accent-ink: #06211e;
+    --rec: #ff6a5c;
+    --rec-ink: #2a0905;
+    --ok: #4cc38a;
+    --warn: #e0a24a;
+    --err: #ff8a7e;
+    --err-bg: #2c1614;
+    --info-bg: #12253a;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.5 var(--sans);
+}
+.wrap {
+  max-width: 760px;
+  margin: 0 auto;
+  padding-block: 28px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+h1 { margin: 0; font-size: 22px; line-height: 1.2; letter-spacing: -0.01em; }
+h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.sub { margin: 4px 0 0; color: var(--muted); }
+
+.status { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px;
+  background: var(--surface); font-size: 13px; color: var(--muted);
+}
+.pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.pill[data-state="ready"], .pill[data-state="online"] { color: var(--ink); }
+.pill[data-state="ready"]::before, .pill[data-state="online"]::before { background: var(--ok); }
+.pill[data-state="loading"]::before { background: var(--warn); }
+.pill[data-state="error"]::before, .pill[data-state="offline"]::before { background: var(--err); }
+
+button, select, textarea, input { font: inherit; color: inherit; }
+.btn {
+  padding: 8px 14px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface); cursor: pointer;
+}
+.btn:hover { border-color: var(--muted); }
+.btn:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn[disabled] { opacity: 0.55; cursor: not-allowed; }
+
+.loadbox {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 16px; border: 1px dashed var(--line); border-radius: 12px; background: var(--surface);
+}
+.loadbox p { margin: 0; color: var(--muted); }
+progress { width: 100%; height: 10px; accent-color: var(--accent); }
+
+.talk-area { display: flex; flex-direction: column; gap: 10px; }
+.talk {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  width: 100%; min-height: 88px; border: 0; border-radius: 18px;
+  background: var(--accent); color: var(--accent-ink);
+  font: 600 20px/1.2 var(--sans); cursor: pointer;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.talk .dot { width: 12px; height: 12px; border-radius: 50%; background: currentColor; }
+.talk[data-state="starting"] { opacity: 0.8; }
+.talk[data-state="recording"] { background: var(--rec); color: var(--rec-ink); }
+.talk[data-state="recording"] .dot { animation: pulse 1s ease-in-out infinite; }
+.talk:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+.talk[disabled] { opacity: 0.5; cursor: not-allowed; }
+@keyframes pulse { 50% { transform: scale(1.6); opacity: 0.5; } }
+@media (prefers-reduced-motion: reduce) { .talk[data-state="recording"] .dot { animation: none; } }
+
+.talk-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; color: var(--muted); font-size: 13px; min-height: 20px; }
+.timer { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+.banner { padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); }
+.banner[data-kind="error"] { background: var(--err-bg); border-color: var(--err); color: var(--err); }
+.banner[data-kind="info"] { background: var(--info-bg); }
+
+.field { display: flex; flex-direction: column; gap: 8px; }
+.field > label { font-weight: 600; }
+textarea {
+  width: 100%; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--surface); line-height: 1.55; resize: vertical;
+}
+.row { display: flex; gap: 8px; }
+
+.panel { padding-top: 20px; border-top: 1px solid var(--line); }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+.pair > div { min-width: 0; }
+.pair .label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.box {
+  min-height: 48px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface); overflow-wrap: anywhere; white-space: pre-wrap;
+}
+.metrics { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; align-items: baseline; }
+.metrics dt { color: var(--muted); font-size: 13px; }
+.metrics dd { margin: 0; font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.metrics .req { font-family: var(--sans); color: var(--muted); font-size: 11px; margin-left: 6px; }
+
+.settings { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+.settings .wide { grid-column: 1 / -1; }
+.settings label.l { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+select { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.checks { display: flex; flex-direction: column; gap: 8px; }
+.checks label { display: flex; gap: 10px; align-items: flex-start; }
+.checks input { margin-top: 4px; }
+.checks small { display: block; color: var(--muted); }
+#customWords { font-family: var(--mono); font-size: 13px; }
+.hint { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+.hint[data-kind="error"] { color: var(--err); }
+
+footer { color: var(--muted); font-size: 13px; }
+footer p { margin: 0 0 6px; }
+
+@media (max-width: 560px) {
+  .pair, .settings { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<main class="wrap">
+
+  <header>
+    <h1>Dictation Prototype</h1>
+    <p class="sub">Phase 1 · speech is transcribed on this computer. Audio is never uploaded or saved.</p>
+    <div class="status" aria-label="Status">
+      <span class="pill" id="modelPill" data-state="idle">Model not loaded</span>
+      <span class="pill" id="enginePill">Engine idle</span>
+      <span class="pill" id="netPill" data-state="online">Online</span>
+    </div>
+  </header>
+
+  <section class="loadbox" id="loadBox">
+    <p>The speech model downloads once from Hugging Face, then stays in this browser. After that, dictation works without a connection.</p>
+    <div class="row"><button class="btn primary" id="loadBtn" type="button">Load speech model</button></div>
+    <progress id="progressBar" max="100" value="0" hidden></progress>
+    <p id="progressText" role="status" hidden></p>
+  </section>
+
+  <section class="talk-area" aria-label="Dictate">
+    <button class="talk" id="talk" type="button" data-state="idle">
+      <span class="dot" aria-hidden="true"></span>
+      <span id="talkLabel">Hold to talk</span>
+    </button>
+    <div class="talk-meta">
+      <span id="talkHint">Hold the button, or hold Space (when not typing), or hold Right Option / Right Alt. Release to insert.</span>
+      <span><span id="jobStatus" role="status"></span> <span class="timer" id="recTimer" hidden>0:00</span></span>
+    </div>
+  </section>
+
+  <div class="banner" id="banner" hidden></div>
+
+  <section class="field">
+    <label for="target">Dictation target</label>
+    <textarea id="target" rows="9" spellcheck="false" placeholder="Click here to place the cursor, then dictate. Text is inserted at the cursor."></textarea>
+    <div class="row">
+      <button class="btn" id="copyBtn" type="button">Copy</button>
+      <button class="btn" id="clearBtn" type="button">Clear</button>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="lastH">
+    <h2 id="lastH">Last dictation</h2>
+    <div class="pair">
+      <div><div class="label">Model output</div><div class="box" id="rawText"></div></div>
+      <div><div class="label">After cleanup</div><div class="box" id="cleanText"></div></div>
+    </div>
+    <dl class="metrics">
+      <dt>Capture start</dt>
+      <dd><span id="statCapture">No trials yet</span><span class="req">SRS-001 · target within 200 ms</span></dd>
+      <dt>Release to text</dt>
+      <dd><span id="statText">No trials yet</span><span class="req">SRS-101 · target median 1.0 s</span></dd>
+      <dt>Last audio</dt>
+      <dd id="statAudio">None yet</dd>
+    </dl>
+    <div class="row" style="margin-top:12px"><button class="btn" id="statReset" type="button">Reset trials</button></div>
+  </section>
+
+  <section class="panel" aria-labelledby="setH">
+    <h2 id="setH">Settings</h2>
+    <div class="settings">
+      <div>
+        <label class="l" for="modelSelect">Speech model</label>
+        <select id="modelSelect">
+          <option value="tiny">Tiny (fastest, least accurate)</option>
+          <option value="base">Base</option>
+          <option value="small">Small (planned default, slower)</option>
+        </select>
+      </div>
+      <div>
+        <label class="l" for="langSelect">Language</label>
+        <select id="langSelect">
+          <option value="auto">Auto-detect</option>
+          <option value="english">English</option>
+          <option value="hindi">Hindi (writes Devanagari)</option>
+        </select>
+      </div>
+      <div>
+        <label class="l" for="speedSelect">Processing</label>
+        <select id="speedSelect">
+          <option value="cpu">Standard (CPU)</option>
+          <option value="gpu">Faster (GPU, experimental, larger download)</option>
+        </select>
+      </div>
+      <div class="checks">
+        <label><input type="checkbox" id="optFillers"><span>Remove filler words<small>um, uh, er, erm, hmm</small></span></label>
+        <label><input type="checkbox" id="optCapitalize"><span>Capitalize sentences</span></label>
+        <label><input type="checkbox" id="optPunctuate"><span>Add punctuation<small>Full stop at the end, and after pauses longer than 1 second</small></span></label>
+        <label><input type="checkbox" id="optWarmMic"><span>Keep microphone ready<small>Starts faster. The browser shows the microphone as in use the whole time.</small></span></label>
+      </div>
+      <div class="wide">
+        <label class="l" for="customWords">Custom words</label>
+        <textarea id="customWords" rows="5" spellcheck="false" placeholder="Winfo&#10;win four -> Winfo"></textarea>
+        <p class="hint" id="customWordsMsg" role="status"></p>
+        <p class="hint">One per line, up to 200. A plain word fixes its capitalization. Write <code>heard -> correct</code> to replace something the model mishears.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Only settings and your custom words are stored in this browser. Dictated audio and text are not.</p>
+    <p>Not in this version: a system-wide hotkey and typing into other apps. Those come with the desktop app.</p>
+  </footer>
+
+</main>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
